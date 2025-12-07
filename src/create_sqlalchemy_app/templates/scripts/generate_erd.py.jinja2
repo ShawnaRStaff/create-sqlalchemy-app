@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""
+ERD (Entity Relationship Diagram) Generator
+
+Generates Mermaid diagrams from SQLAlchemy models.
+Only regenerates when the schema actually changes (hash-based detection).
+
+Usage:
+    python scripts/generate_erd.py
+    python scripts/generate_erd.py --force  # Force regeneration
+    python scripts/generate_erd.py --output custom_name.md
+"""
+
+import argparse
+import hashlib
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Schema hash file location
+SCHEMA_HASH_FILE = PROJECT_ROOT / ".schema_hash"
+
+
+def get_schema_hash(metadata) -> str:
+    """
+    Generate a hash of the current model schema.
+
+    This allows us to detect when models have changed and
+    only regenerate the ERD when necessary.
+    """
+    schema_repr = {}
+
+    for table in sorted(metadata.tables.values(), key=lambda t: t.name):
+        schema_repr[table.name] = {
+            "columns": {
+                col.name: {
+                    "type": str(col.type),
+                    "nullable": col.nullable,
+                    "primary_key": col.primary_key,
+                }
+                for col in sorted(table.columns, key=lambda c: c.name)
+            },
+            "indexes": sorted([idx.name for idx in table.indexes if idx.name]),
+            "foreign_keys": sorted([str(fk) for fk in table.foreign_keys]),
+        }
+
+    return hashlib.sha256(
+        json.dumps(schema_repr, sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
+def should_regenerate(metadata, force: bool = False) -> bool:
+    """Check if ERD needs regeneration based on schema hash."""
+    if force:
+        logger.info("Force flag set - will regenerate")
+        return True
+
+    current_hash = get_schema_hash(metadata)
+
+    if not SCHEMA_HASH_FILE.exists():
+        logger.info("No previous schema hash found - will generate")
+        return True
+
+    stored_hash = SCHEMA_HASH_FILE.read_text().strip()
+
+    if current_hash != stored_hash:
+        logger.info(f"Schema changed (hash: {stored_hash[:8]}... -> {current_hash[:8]}...)")
+        return True
+
+    logger.info("Schema unchanged - skipping regeneration")
+    return False
+
+
+def save_schema_hash(metadata):
+    """Save the current schema hash."""
+    current_hash = get_schema_hash(metadata)
+    SCHEMA_HASH_FILE.write_text(current_hash)
+    logger.debug(f"Saved schema hash: {current_hash[:8]}...")
+
+
+def format_column_type(column_type) -> str:
+    """Format SQLAlchemy column type for display."""
+    type_str = str(column_type).lower()
+
+    type_map = {
+        "varchar": "string",
+        "character varying": "string",
+        "text": "text",
+        "integer": "int",
+        "bigint": "bigint",
+        "smallint": "smallint",
+        "boolean": "bool",
+        "datetime": "datetime",
+        "timestamp": "timestamp",
+        "date": "date",
+        "time": "time",
+        "float": "float",
+        "double": "double",
+        "numeric": "decimal",
+        "uuid": "uuid",
+        "json": "json",
+        "jsonb": "jsonb",
+    }
+
+    for key, value in type_map.items():
+        if key in type_str:
+            return value
+
+    return type_str.split("(")[0]  # Remove length specifications
+
+
+def generate_erd(metadata, output_path: Path) -> Path:
+    """Generate ERD diagram as Mermaid markdown."""
+
+    # Filter out alembic_version table
+    tables = [t for t in metadata.tables.values() if t.name != "alembic_version"]
+
+    if not tables:
+        logger.warning("No tables found in metadata!")
+        return None
+
+    # Build Mermaid diagram
+    lines = [
+        "# Database ERD Diagram",
+        "",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "```mermaid",
+        "erDiagram",
+    ]
+
+    # Add tables with columns
+    for table in sorted(tables, key=lambda t: t.name):
+        lines.append(f"    {table.name} {{")
+
+        # Get primary key columns
+        pk_columns = {col.name for col in table.columns if col.primary_key}
+
+        # Get foreign key columns
+        fk_columns = {fk.parent.name for fk in table.foreign_keys}
+
+        for column in table.columns:
+            col_type = format_column_type(column.type)
+            col_name = column.name
+
+            # Add key indicators
+            if col_name in pk_columns:
+                lines.append(f"        {col_type} {col_name} PK")
+            elif col_name in fk_columns:
+                lines.append(f"        {col_type} {col_name} FK")
+            else:
+                lines.append(f"        {col_type} {col_name}")
+
+        lines.append("    }")
+
+    # Add relationships
+    for table in tables:
+        for fk in table.foreign_keys:
+            target_table = fk.column.table.name
+            if target_table == "alembic_version":
+                continue
+
+            source_col = fk.parent.name
+            target_col = fk.column.name
+
+            # Many-to-one relationship (most common)
+            lines.append(
+                f'    {table.name} }}o--|| {target_table} : "{source_col}"'
+            )
+
+    lines.append("```")
+
+    # Write to file
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines))
+
+    logger.info(f"ERD saved to: {output_path}")
+    return output_path
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate ERD diagram from SQLAlchemy models"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        type=str,
+        help="Output file path (default: docs/erds/erd_TIMESTAMP.md)"
+    )
+    parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force regeneration even if schema unchanged"
+    )
+    parser.add_argument(
+        "--exclude", "-e",
+        nargs="+",
+        default=["alembic_version"],
+        help="Tables to exclude"
+    )
+    args = parser.parse_args()
+
+    # Load environment
+    load_dotenv()
+
+    # Import models to register them with Base
+    try:
+        from models import Base
+        from data.db import engine
+
+        # Reflect existing tables if needed
+        Base.metadata.reflect(bind=engine)
+
+    except ImportError as e:
+        logger.error(f"Failed to import models: {e}")
+        logger.error("Make sure you have created at least one model!")
+        sys.exit(1)
+
+    # Check if regeneration needed
+    if not should_regenerate(Base.metadata, args.force):
+        print("Schema unchanged - ERD is up to date")
+        return
+
+    # Determine output path
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = PROJECT_ROOT / "docs" / "erds" / f"erd_{timestamp}.md"
+
+    # Generate ERD
+    result = generate_erd(Base.metadata, output_path)
+
+    if result:
+        # Save schema hash
+        save_schema_hash(Base.metadata)
+        print(f"ERD generated: {result}")
+    else:
+        print("No tables found - ERD not generated")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

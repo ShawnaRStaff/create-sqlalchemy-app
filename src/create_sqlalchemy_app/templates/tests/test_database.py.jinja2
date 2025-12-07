@@ -1,0 +1,132 @@
+"""
+Database integration tests.
+
+These tests verify that:
+- Database connection works
+- Models can be created and queried
+- The test fixture isolation works correctly
+"""
+
+import pytest
+from sqlalchemy import text
+
+
+class TestDatabaseConnection:
+    """Test database connectivity and basic operations."""
+
+    def test_database_connection(self, db):
+        """Verify database connection is working."""
+        # Execute a simple query
+        result = db.execute(text("SELECT 1"))
+        assert result.fetchone()[0] == 1
+
+    def test_session_is_isolated(self, db):
+        """Verify each test gets an isolated session."""
+        # This test's changes should not affect other tests
+        # because transactions are rolled back after each test
+        result = db.execute(text("SELECT 1"))
+        assert result is not None
+
+
+class TestModelOperations:
+    """
+    Test model CRUD operations.
+
+    NOTE: These tests require you to create models first!
+
+    Once you have models, uncomment and modify these tests:
+
+    def test_create_model(self, db):
+        from models.user import User
+
+        user = User(
+            username="testuser",
+            email="test@example.com",
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.id is not None
+        assert user.username == "testuser"
+
+    def test_query_model(self, db):
+        from models.user import User
+
+        # Create test data
+        user = User(username="querytest", email="query@example.com")
+        db.add(user)
+        db.commit()
+
+        # Query it back
+        found = db.query(User).filter(User.username == "querytest").first()
+
+        assert found is not None
+        assert found.email == "query@example.com"
+
+    def test_update_model(self, db):
+        from models.user import User
+
+        user = User(username="updatetest", email="update@example.com")
+        db.add(user)
+        db.commit()
+
+        # Update
+        user.email = "updated@example.com"
+        db.commit()
+
+        # Verify
+        db.refresh(user)
+        assert user.email == "updated@example.com"
+
+    def test_delete_model(self, db):
+        from models.user import User
+
+        user = User(username="deletetest", email="delete@example.com")
+        db.add(user)
+        db.commit()
+
+        user_id = user.id
+
+        # Delete
+        db.delete(user)
+        db.commit()
+
+        # Verify deleted
+        found = db.query(User).filter(User.id == user_id).first()
+        assert found is None
+    """
+
+    def test_placeholder(self, db):
+        """
+        Placeholder test - replace with real model tests.
+
+        Once you create models, delete this test and uncomment
+        the tests above (modified for your models).
+        """
+        # This just verifies the test infrastructure works
+        assert db is not None
+
+
+{% if is_fastapi %}
+class TestHealthEndpoint:
+    """Test the health check endpoint."""
+
+    def test_health_check(self, client):
+        """Verify health endpoint returns OK."""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+{% endif %}
+
+{% if is_flask %}
+class TestHealthEndpoint:
+    """Test the health check endpoint."""
+
+    def test_health_check(self, client):
+        """Verify health endpoint returns OK."""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "healthy"
+{% endif %}

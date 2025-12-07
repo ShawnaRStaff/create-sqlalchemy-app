@@ -1,0 +1,52 @@
+# Docker Compose configuration for {{ project_name }}
+# Start with: docker-compose up -d
+# Stop with: docker-compose down
+# View logs: docker-compose logs -f
+
+version: '3.8'
+
+services:
+{% if is_postgresql %}
+  db:
+    image: postgres:16-alpine
+    container_name: {{ project_name }}_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-{{ db_name }}}
+      POSTGRES_USER: ${DB_USER:-{{ db_user }}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-{{ db_password }}}
+    ports:
+      - "${DB_PORT:-{{ db_port }}}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-{{ db_user }}} -d ${DB_NAME:-{{ db_name }}}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+{% elif is_mysql %}
+  db:
+    image: mysql:8.0
+    container_name: {{ project_name }}_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-{{ db_name }}}
+      MYSQL_USER: ${DB_USER:-{{ db_user }}}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-{{ db_password }}}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-{{ db_password }}}
+    ports:
+      - "${DB_PORT:-{{ db_port }}}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:
+{% endif %}

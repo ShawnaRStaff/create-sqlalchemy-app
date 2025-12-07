@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""
+{{ project_name }} - Minimal SQLAlchemy Project
+
+This is a minimal project setup without a web framework.
+Use this for:
+- ETL pipelines
+- Data processing scripts
+- Backend services without HTTP
+- Learning SQLAlchemy
+
+Example usage:
+    python main.py
+"""
+
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from sqlalchemy import text
+
+from data.db import get_db_context, engine
+from models import Base
+
+
+def init_database():
+    """
+    Initialize the database.
+
+    Creates all tables defined in your models.
+    For production, use Alembic migrations instead.
+    """
+    print("Initializing database...")
+    Base.metadata.create_all(bind=engine)
+    print("Database initialized!")
+
+
+def check_connection():
+    """Verify database connection."""
+    print("Checking database connection...")
+    try:
+        with get_db_context() as db:
+            result = db.execute(text("SELECT 1"))
+            if result.fetchone():
+                print("Database connection: OK")
+                return True
+    except Exception as e:
+        print(f"Database connection: FAILED - {e}")
+        return False
+
+
+def example_operations():
+    """
+    Example database operations.
+
+    Uncomment and modify once you have models:
+
+    from models.user import User
+
+    with get_db_context() as db:
+        # Create
+        user = User(username="demo", email="demo@example.com")
+        db.add(user)
+        db.commit()
+        print(f"Created user: {user}")
+
+        # Read
+        users = db.query(User).all()
+        print(f"All users: {users}")
+
+        # Update
+        user.email = "updated@example.com"
+        db.commit()
+        print(f"Updated user: {user}")
+
+        # Delete
+        db.delete(user)
+        db.commit()
+        print("Deleted user")
+    """
+    print("\nExample operations:")
+    print("  See main.py for example code once you create models.")
+
+
+def main():
+    """Main entry point."""
+    print(f"{{ project_name }} - Minimal SQLAlchemy Project")
+    print("=" * 50)
+
+    # Check database connection
+    if not check_connection():
+        print("\nPlease ensure your database is running!")
+{% if include_docker %}
+        print("Run: docker-compose up -d")
+{% endif %}
+        sys.exit(1)
+
+    # Example operations
+    example_operations()
+
+    print("\nNext steps:")
+    print("  1. Create models in the models/ directory")
+    print("  2. Run: alembic revision --autogenerate -m 'Initial'")
+    print("  3. Run: alembic upgrade head")
+    print("  4. Modify this file to use your models")
+
+
+if __name__ == "__main__":
+    main()

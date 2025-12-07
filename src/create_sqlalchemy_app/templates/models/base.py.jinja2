@@ -1,0 +1,127 @@
+"""
+Base model class for SQLAlchemy models.
+
+This module provides the Base class that all models should inherit from.
+It includes:
+- Automatic table naming (lowercase class name)
+- Standard naming conventions for constraints
+- Common __repr__ method
+
+================================================================================
+HOW TO CREATE A NEW MODEL
+================================================================================
+
+1. Create a new file in this directory (e.g., models/product.py):
+
+    from sqlalchemy import Column, String, Float, DateTime, Boolean
+    from sqlalchemy.dialects.postgresql import UUID  # or use String for other DBs
+    from sqlalchemy.sql import func
+    import uuid
+    from .base import Base
+
+    class Product(Base):
+        __tablename__ = "product"
+
+        id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        name = Column(String(255), nullable=False)
+        price = Column(Float, nullable=False)
+        is_active = Column(Boolean, default=True)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+2. Import it in models/__init__.py:
+
+    from .base import Base
+    from .product import Product  # Add this line
+
+    __all__ = ["Base", "Product"]  # Add to __all__
+
+3. Create a migration:
+
+    alembic revision --autogenerate -m "Add product model"
+
+4. Apply the migration:
+
+    alembic upgrade head
+
+================================================================================
+RELATIONSHIPS EXAMPLE
+================================================================================
+
+    # models/order.py
+    from sqlalchemy import Column, ForeignKey
+    from sqlalchemy.orm import relationship
+
+    class Order(Base):
+        __tablename__ = "order"
+
+        id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
+
+        # Relationship to User (many-to-one)
+        user = relationship("User", back_populates="orders")
+
+        # Relationship to OrderItem (one-to-many)
+        items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+================================================================================
+INDEXES EXAMPLE
+================================================================================
+
+    from sqlalchemy import Index
+
+    class User(Base):
+        __tablename__ = "user"
+
+        id = Column(UUID(as_uuid=True), primary_key=True)
+        email = Column(String(255), nullable=False, unique=True)
+        username = Column(String(100), nullable=False)
+
+        __table_args__ = (
+            Index("ix_user_email", "email"),
+            Index("ix_user_username", "username"),
+        )
+
+================================================================================
+"""
+
+from sqlalchemy import MetaData
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import declarative_base
+
+# Naming convention for constraints (recommended for Alembic)
+# This ensures consistent naming across databases
+convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s"
+}
+
+metadata = MetaData(naming_convention=convention)
+
+
+class BaseModel:
+    """
+    Base class for all models.
+
+    Provides:
+    - Automatic __tablename__ from class name (lowercase)
+    - Standard __repr__ for debugging
+    """
+
+    @declared_attr
+    def __tablename__(cls) -> str:
+        """Generate table name from class name (lowercase)."""
+        return cls.__name__.lower()
+
+    def __repr__(self) -> str:
+        """String representation for debugging."""
+        if hasattr(self, "id"):
+            return f"<{self.__class__.__name__}(id={self.id})>"
+        return f"<{self.__class__.__name__}>"
+
+
+# Create the declarative base
+Base = declarative_base(cls=BaseModel, metadata=metadata)

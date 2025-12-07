@@ -1,0 +1,23 @@
+"""
+SQLAlchemy Models
+
+This package contains all database models for the application.
+Import your models here to make them available for Alembic migrations.
+
+Example:
+    from .base import Base
+    from .user import User
+    from .product import Product
+
+All models must be imported here for Alembic to detect them!
+"""
+
+from .base import Base
+
+# Import your models below this line
+# Example: from .user import User
+
+__all__ = [
+    "Base",
+    # Add your model names here
+]

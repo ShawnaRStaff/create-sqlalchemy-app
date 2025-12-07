@@ -1,0 +1,33 @@
+"""
+Health check endpoint.
+"""
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from data.db import get_db
+
+router = APIRouter()
+
+
+@router.get("/health")
+async def health_check(db: Session = Depends(get_db)):
+    """
+    Health check endpoint.
+
+    Verifies:
+    - API is responding
+    - Database connection is working
+    """
+    # Check database connection
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    return {
+        "status": "healthy" if db_status == "connected" else "unhealthy",
+        "database": db_status,
+    }

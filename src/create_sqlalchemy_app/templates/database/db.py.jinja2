@@ -1,0 +1,132 @@
+"""
+Database configuration and session management.
+
+This module provides:
+- Database engine configuration
+- Session factory for database operations
+- Dependency injection for web frameworks
+"""
+
+import os
+from contextlib import contextmanager
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+{% if is_postgresql %}
+from sqlalchemy.pool import QueuePool
+{% endif %}
+
+# Load environment variables
+load_dotenv()
+
+# Database configuration from environment
+DB_NAME = os.getenv("DB_NAME", "{{ db_name }}")
+{% if requires_server %}
+DB_USER = os.getenv("DB_USER", "{{ db_user }}")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "{{ db_password }}")
+DB_HOST = os.getenv("DB_HOST", "{{ db_host }}")
+DB_PORT = os.getenv("DB_PORT", "{{ db_port }}")
+{% endif %}
+
+# Environment detection
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+IS_TESTING = os.getenv("TESTING", "false").lower() == "true"
+
+{% if is_sqlite %}
+# SQLite database URL
+DATABASE_URL = f"sqlite:///{DB_NAME}.db"
+{% elif is_mysql %}
+# MySQL database URL
+DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+{% else %}
+# PostgreSQL database URL
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+{% endif %}
+
+{% if is_sqlite %}
+# Create engine (SQLite)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},  # Required for SQLite
+    echo=(ENVIRONMENT == "development"),  # Log SQL in development
+)
+{% elif is_postgresql %}
+# Create engine with connection pooling (PostgreSQL)
+engine = create_engine(
+    DATABASE_URL,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,  # Verify connections before use
+    echo=(ENVIRONMENT == "development"),  # Log SQL in development
+)
+{% else %}
+# Create engine (MySQL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,
+    echo=(ENVIRONMENT == "development"),
+)
+{% endif %}
+
+# Session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db() -> Session:
+    """
+    Dependency for FastAPI/Flask to get database session.
+
+    Usage (FastAPI):
+        @app.get("/items")
+        def get_items(db: Session = Depends(get_db)):
+            return db.query(Item).all()
+
+    Usage (Flask):
+        with get_db_context() as db:
+            items = db.query(Item).all()
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_context():
+    """
+    Context manager for database sessions.
+
+    Usage:
+        with get_db_context() as db:
+            user = db.query(User).first()
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def init_db():
+    """
+    Initialize the database, creating all tables.
+
+    Call this after defining all your models:
+        from models import Base
+        from data.db import engine, init_db
+
+        Base.metadata.create_all(bind=engine)
+    """
+    from models import Base
+    Base.metadata.create_all(bind=engine)

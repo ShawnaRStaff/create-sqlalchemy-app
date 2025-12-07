@@ -1,0 +1,76 @@
+# Alembic Configuration for {{ project_name }}
+
+[alembic]
+# Path to migration scripts
+script_location = migrations
+
+# Template used to generate migration files
+file_template = %%(year)d%%(month).2d%%(day).2d_%%(hour).2d%%(minute).2d%%(second).2d_%%(rev)s_%%(slug)s
+
+# Truncate long slug names
+truncate_slug_length = 40
+
+# Set to 'true' to run environment during revision command
+revision_environment = false
+
+# Set to 'true' to allow .pyc and .pyo files without source
+sourceless = false
+
+# Version location specification
+# version_locations = %(here)s/bar:%(here)s/bat:migrations/versions
+
+# Output encoding for revision files
+output_encoding = utf-8
+
+{% if is_sqlite %}
+sqlalchemy.url = sqlite:///{{ db_name }}.db
+{% elif is_mysql %}
+sqlalchemy.url = mysql+pymysql://{{ db_user }}:{{ db_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
+{% else %}
+sqlalchemy.url = postgresql://{{ db_user }}:{{ db_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
+{% endif %}
+
+
+[post_write_hooks]
+# Hooks run on newly generated revision scripts
+# Example: format using black
+# hooks = black
+# black.type = console_scripts
+# black.entrypoint = black
+# black.options = -l 79 REVISION_SCRIPT_FILENAME
+
+
+# Logging configuration
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S

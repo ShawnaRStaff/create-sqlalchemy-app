@@ -1,0 +1,55 @@
+"""
+{{ project_name }} - Flask Application Factory
+
+Usage:
+    from app import create_app
+    app = create_app()
+"""
+
+import os
+
+from flask import Flask
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+
+def create_app(config_name: str = None) -> Flask:
+    """
+    Application factory for creating Flask app instances.
+
+    Args:
+        config_name: Configuration name (development, testing, production)
+
+    Returns:
+        Configured Flask application
+    """
+    app = Flask(__name__)
+
+    # Configuration
+    config_name = config_name or os.getenv("ENVIRONMENT", "development")
+
+    app.config.update(
+        SECRET_KEY=os.getenv("SECRET_KEY", "dev-secret-change-in-production"),
+        DEBUG=(config_name == "development"),
+        TESTING=(config_name == "testing"),
+    )
+
+    # Register blueprints
+    from app.routes.health import health_bp
+    app.register_blueprint(health_bp)
+
+    # Add your blueprints here:
+    # from app.routes.users import users_bp
+    # app.register_blueprint(users_bp, url_prefix="/api/v1/users")
+
+    @app.route("/")
+    def index():
+        """Root endpoint."""
+        return {
+            "message": "Welcome to {{ project_name }}",
+            "health": "/health",
+        }
+
+    return app

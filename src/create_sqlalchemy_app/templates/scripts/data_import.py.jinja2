@@ -1,0 +1,366 @@
+#!/usr/bin/env python3
+"""
+CSV Data Import Script
+
+Import data from CSV files into the database.
+
+================================================================================
+IMPORTANT: READ BEFORE USING
+================================================================================
+
+This script provides a framework for importing CSV data. Before using it:
+
+1. CREATE YOUR MODELS FIRST
+   - Define SQLAlchemy models that match your CSV structure
+   - Each CSV column needs a corresponding model attribute
+   - Run migrations to create the tables
+
+2. UPDATE THE CONFIGURATION BELOW
+   - Add your models to MODEL_MAP
+   - Define IMPORT_ORDER based on foreign key dependencies
+   - Configure COLUMN_MAPPINGS if CSV headers differ from model attributes
+
+3. UNDERSTAND THE LIMITATIONS
+   - The script CANNOT automatically infer data types
+   - You must handle data cleaning/validation
+   - Foreign key relationships require correct import order
+
+================================================================================
+
+Usage:
+    python scripts/data_import.py
+    python scripts/data_import.py --csv-dir data/import
+    python scripts/data_import.py --truncate  # Clear tables first
+"""
+
+import argparse
+import logging
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Type
+
+import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from tqdm import tqdm
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(PROJECT_ROOT / "data_import.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+
+# =============================================================================
+# CONFIGURATION - UPDATE THIS SECTION FOR YOUR PROJECT
+# =============================================================================
+
+# Import your models here
+from models import Base
+# Example: from models.user import User
+# Example: from models.product import Product
+
+# Map CSV filenames (without .csv) to model classes
+# Example:
+# MODEL_MAP: Dict[str, Type] = {
+#     "users": User,
+#     "products": Product,
+#     "orders": Order,
+# }
+MODEL_MAP: Dict[str, Type] = {
+    # Add your mappings here
+}
+
+# Import order - tables with no dependencies first, then dependent tables
+# Example:
+# IMPORT_ORDER: List[List[str]] = [
+#     ["users", "categories"],      # Level 1: No foreign keys
+#     ["products"],                  # Level 2: Depends on categories
+#     ["orders"],                    # Level 3: Depends on users
+#     ["order_items"],               # Level 4: Depends on orders and products
+# ]
+IMPORT_ORDER: List[List[str]] = [
+    # Add your import order here
+]
+
+# Column mappings: CSV column name -> model attribute name
+# Only needed if CSV headers don't match model attributes
+# Example:
+# COLUMN_MAPPINGS: Dict[str, Dict[str, str]] = {
+#     "users": {
+#         "user_id": "id",
+#         "email_address": "email",
+#     },
+# }
+COLUMN_MAPPINGS: Dict[str, Dict[str, str]] = {
+    # Add your column mappings here
+}
+
+# File encodings for specific CSVs (default: utf-8)
+FILE_ENCODINGS: Dict[str, str] = {
+    "default": "utf-8",
+    # Example: "legacy_data": "latin-1",
+}
+
+# =============================================================================
+# IMPORT FUNCTIONS
+# =============================================================================
+
+
+def parse_timestamp(ts_str) -> datetime | None:
+    """Parse various timestamp formats."""
+    if pd.isna(ts_str) or str(ts_str).lower() in ("", "null", "none", "nan"):
+        return None
+
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%d/%m/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M:%S",
+        "%Y-%m-%d",
+    ]
+
+    ts_str = str(ts_str).strip()
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(ts_str, fmt)
+        except ValueError:
+            continue
+
+    logger.warning(f"Could not parse timestamp: {ts_str}")
+    return None
+
+
+def clean_dataframe(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """Clean and prepare dataframe for import."""
+    # Remove unnamed columns
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+
+    # Apply column mappings if defined
+    if table_name in COLUMN_MAPPINGS:
+        df = df.rename(columns=COLUMN_MAPPINGS[table_name])
+
+    # Convert timestamp columns
+    timestamp_columns = ["created_at", "updated_at", "deleted_at"]
+    for col in timestamp_columns:
+        if col in df.columns:
+            df[col] = df[col].apply(parse_timestamp)
+
+    # Convert boolean columns
+    bool_columns = ["is_active", "is_deleted", "is_admin", "is_verified"]
+    for col in bool_columns:
+        if col in df.columns:
+            df[col] = df[col].map({
+                "true": True, "True": True, "TRUE": True, "1": True, 1: True,
+                "false": False, "False": False, "FALSE": False, "0": False, 0: False,
+            }).fillna(False)
+
+    # Replace empty strings and null markers with None
+    df = df.replace(["", "null", "NULL", "None", "NONE"], None)
+
+    return df
+
+
+def import_table(
+    session: Session,
+    table_name: str,
+    csv_path: Path,
+    truncate: bool = False
+) -> int:
+    """Import a single CSV file into its corresponding table."""
+    if table_name not in MODEL_MAP:
+        logger.warning(f"No model mapping for '{table_name}' - skipping")
+        return 0
+
+    model_class = MODEL_MAP[table_name]
+
+    # Get file encoding
+    encoding = FILE_ENCODINGS.get(table_name, FILE_ENCODINGS["default"])
+
+    logger.info(f"Importing {table_name} from {csv_path}")
+
+    # Read CSV
+    try:
+        df = pd.read_csv(
+            csv_path,
+            keep_default_na=False,
+            na_values=[""],
+            encoding=encoding
+        )
+    except Exception as e:
+        logger.error(f"Failed to read {csv_path}: {e}")
+        raise
+
+    # Clean data
+    df = clean_dataframe(df, table_name)
+
+    if df.empty:
+        logger.warning(f"No data in {csv_path}")
+        return 0
+
+    # Truncate if requested
+    if truncate:
+        logger.info(f"Truncating {table_name}...")
+        try:
+            session.query(model_class).delete()
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to truncate {table_name}: {e}")
+            raise
+
+    # Import in chunks
+    chunk_size = 1000
+    total_rows = len(df)
+    imported = 0
+
+    with tqdm(total=total_rows, desc=f"Importing {table_name}") as pbar:
+        for start in range(0, total_rows, chunk_size):
+            chunk = df.iloc[start:start + chunk_size]
+            objects = []
+
+            for _, row in chunk.iterrows():
+                # Create model instance
+                obj_data = {
+                    col: (None if pd.isna(val) else val)
+                    for col, val in row.items()
+                    if hasattr(model_class, col)
+                }
+                objects.append(model_class(**obj_data))
+
+            try:
+                session.bulk_save_objects(objects)
+                session.commit()
+                imported += len(objects)
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error importing chunk: {e}")
+                raise
+
+            pbar.update(len(chunk))
+
+    logger.info(f"Imported {imported} rows into {table_name}")
+    return imported
+
+
+def import_data(csv_dir: Path, truncate: bool = False):
+    """Import all CSV files in dependency order."""
+    from data.db import SessionLocal
+
+    # Validate configuration
+    if not MODEL_MAP:
+        logger.error(
+            "MODEL_MAP is empty! You must configure your models before importing.\n"
+            "See the configuration section at the top of this file."
+        )
+        sys.exit(1)
+
+    if not IMPORT_ORDER:
+        logger.error(
+            "IMPORT_ORDER is empty! You must define the import order.\n"
+            "See the configuration section at the top of this file."
+        )
+        sys.exit(1)
+
+    session = SessionLocal()
+    total_imported = 0
+
+    try:
+        # Import in dependency order
+        for level in IMPORT_ORDER:
+            for table_name in level:
+                csv_path = csv_dir / f"{table_name}.csv"
+
+                if not csv_path.exists():
+                    logger.warning(f"CSV not found: {csv_path}")
+                    continue
+
+                count = import_table(session, table_name, csv_path, truncate)
+                total_imported += count
+
+        logger.info(f"Import complete! Total rows imported: {total_imported}")
+
+    except Exception as e:
+        logger.error(f"Import failed: {e}")
+        raise
+    finally:
+        session.close()
+
+
+def main():
+    print("""
+================================================================================
+CSV DATA IMPORT
+================================================================================
+
+Before running this script, ensure you have:
+
+1. Created SQLAlchemy models for your data
+2. Run migrations (alembic upgrade head)
+3. Configured MODEL_MAP and IMPORT_ORDER in this script
+4. Placed CSV files in the data directory
+
+================================================================================
+""")
+
+    parser = argparse.ArgumentParser(description="Import CSV data into database")
+    parser.add_argument(
+        "--csv-dir", "-d",
+        type=str,
+        default=str(PROJECT_ROOT / "data"),
+        help="Directory containing CSV files"
+    )
+    parser.add_argument(
+        "--truncate", "-t",
+        action="store_true",
+        help="Truncate tables before importing"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be imported without actually importing"
+    )
+    args = parser.parse_args()
+
+    csv_dir = Path(args.csv_dir)
+
+    if not csv_dir.exists():
+        logger.error(f"CSV directory not found: {csv_dir}")
+        sys.exit(1)
+
+    if args.dry_run:
+        print("DRY RUN - showing what would be imported:\n")
+        for level in IMPORT_ORDER:
+            for table_name in level:
+                csv_path = csv_dir / f"{table_name}.csv"
+                status = "FOUND" if csv_path.exists() else "MISSING"
+                model_status = "OK" if table_name in MODEL_MAP else "NO MODEL"
+                print(f"  {table_name}: {status}, {model_status}")
+        return
+
+    try:
+        import_data(csv_dir, args.truncate)
+    except Exception as e:
+        logger.error(f"Import failed: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

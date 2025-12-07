@@ -1,0 +1,35 @@
+"""
+Health check blueprint.
+"""
+
+from flask import Blueprint, jsonify
+from sqlalchemy import text
+
+from data.db import get_db_context
+
+health_bp = Blueprint("health", __name__)
+
+
+@health_bp.route("/health")
+def health_check():
+    """
+    Health check endpoint.
+
+    Verifies:
+    - API is responding
+    - Database connection is working
+    """
+    # Check database connection
+    try:
+        with get_db_context() as db:
+            db.execute(text("SELECT 1"))
+            db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    status = "healthy" if db_status == "connected" else "unhealthy"
+
+    return jsonify({
+        "status": status,
+        "database": db_status,
+    }), 200 if status == "healthy" else 503

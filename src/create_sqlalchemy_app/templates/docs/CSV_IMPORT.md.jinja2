@@ -1,0 +1,160 @@
+# CSV Data Import Guide
+
+This guide explains how to use the CSV import functionality to populate your database.
+
+## Before You Begin
+
+**IMPORTANT**: The CSV import script is a framework, not a magic tool. Before importing data:
+
+1. **Create your SQLAlchemy models** that match your CSV structure
+2. **Run migrations** to create the database tables
+3. **Configure the import script** with your models and column mappings
+
+## Quick Start
+
+1. Place your CSV files in `data/` directory
+2. Edit `scripts/data_import.py` to configure your models
+3. Run the import:
+
+```bash
+python scripts/data_import.py
+```
+
+## Configuration
+
+Open `scripts/data_import.py` and update these sections:
+
+### 1. Import Your Models
+
+```python
+from models.user import User
+from models.product import Product
+from models.order import Order
+```
+
+### 2. Define MODEL_MAP
+
+Map CSV filenames (without .csv) to model classes:
+
+```python
+MODEL_MAP = {
+    "users": User,          # users.csv -> User model
+    "products": Product,    # products.csv -> Product model
+    "orders": Order,        # orders.csv -> Order model
+}
+```
+
+### 3. Define IMPORT_ORDER
+
+Tables must be imported in dependency order (foreign keys last):
+
+```python
+IMPORT_ORDER = [
+    ["users", "categories"],    # Level 1: No dependencies
+    ["products"],               # Level 2: Depends on categories
+    ["orders"],                 # Level 3: Depends on users
+    ["order_items"],            # Level 4: Depends on orders, products
+]
+```
+
+### 4. Column Mappings (Optional)
+
+If CSV headers don't match model attributes:
+
+```python
+COLUMN_MAPPINGS = {
+    "users": {
+        "user_id": "id",           # CSV 'user_id' -> model 'id'
+        "email_address": "email",  # CSV 'email_address' -> model 'email'
+    },
+}
+```
+
+## CSV File Requirements
+
+### Naming Convention
+
+- Files should be named `{table_name}.csv`
+- Example: `users.csv`, `products.csv`, `orders.csv`
+
+### Column Headers
+
+- First row must contain column headers
+- Headers should match model attribute names (or use COLUMN_MAPPINGS)
+
+### Data Types
+
+The script handles common conversions:
+
+| Python Type | CSV Values |
+|-------------|-----------|
+| Boolean | `true`, `false`, `1`, `0`, `True`, `False` |
+| DateTime | `2024-01-15 10:30:00`, `2024-01-15T10:30:00` |
+| NULL | empty cell, `null`, `NULL`, `None` |
+| UUID | Standard UUID format |
+
+### Example CSV (users.csv)
+
+```csv
+id,username,email,is_active,created_at
+550e8400-e29b-41d4-a716-446655440001,john_doe,john@example.com,true,2024-01-15 10:30:00
+550e8400-e29b-41d4-a716-446655440002,jane_doe,jane@example.com,true,2024-01-16 11:45:00
+```
+
+## Command Line Options
+
+```bash
+# Import from default directory (data/)
+python scripts/data_import.py
+
+# Import from custom directory
+python scripts/data_import.py --csv-dir /path/to/csvs
+
+# Truncate tables before importing (warning: deletes existing data!)
+python scripts/data_import.py --truncate
+
+# Dry run - show what would be imported
+python scripts/data_import.py --dry-run
+```
+
+## Handling Large Files
+
+The script imports data in chunks (default: 1000 rows) to handle large files efficiently. Progress bars show import status.
+
+## Troubleshooting
+
+### "MODEL_MAP is empty"
+
+You haven't configured your models yet. Edit `scripts/data_import.py` and add your model mappings.
+
+### "Foreign key constraint failed"
+
+Your IMPORT_ORDER is wrong. Tables with foreign keys must be imported AFTER the tables they reference.
+
+### "Column not found"
+
+The CSV has columns that don't exist in your model. Either:
+- Remove the column from CSV
+- Add the attribute to your model
+- Use COLUMN_MAPPINGS to rename it
+
+### Encoding errors
+
+Some CSV files use non-UTF-8 encoding. Add to FILE_ENCODINGS:
+
+```python
+FILE_ENCODINGS = {
+    "default": "utf-8",
+    "legacy_export": "latin-1",
+}
+```
+
+## What the Script CANNOT Do
+
+- Automatically create models from CSV structure
+- Infer correct data types (string "123" vs integer 123)
+- Determine which columns should be indexed
+- Create relationships between tables automatically
+- Validate business logic rules
+
+These are YOUR responsibility as the developer.
