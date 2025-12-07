@@ -1,0 +1,134 @@
+# {{ project_name }}
+
+A {{ framework_display }} application with SQLAlchemy and {{ database_display }}.
+
+## Quick Start
+
+### 1. Activate the virtual environment
+
+```bash
+# macOS/Linux
+source .venv/bin/activate
+
+# Windows
+.\.venv\Scripts\activate
+```
+{% if requires_server and include_docker %}
+
+### 2. Start the database
+
+```bash
+docker-compose up -d
+```
+{% endif %}
+
+### {% if requires_server and include_docker %}3{% else %}2{% endif %}. Run database migrations
+
+```bash
+# Create migration (after adding/changing models)
+alembic revision --autogenerate -m "Your migration message"
+
+# Apply migrations
+alembic upgrade head
+```
+
+### {% if requires_server and include_docker %}4{% else %}3{% endif %}. Start the application
+{% if is_fastapi %}
+```bash
+uvicorn main:app --reload
+```
+
+Then open http://localhost:8000 in your browser.
+
+- **API Docs**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **Health Check**: http://localhost:8000/health
+{% elif is_flask %}
+```bash
+python run.py
+```
+
+Then open http://localhost:5000 in your browser.
+
+- **Health Check**: http://localhost:5000/health
+{% else %}
+```bash
+python main.py
+```
+{% endif %}
+
+## Project Structure
+
+```
+{{ project_name }}/
+├── .venv/                # Virtual environment
+├── models/               # SQLAlchemy models
+│   ├── __init__.py
+│   └── base.py          # Base model class
+├── migrations/           # Alembic migrations
+│   └── versions/
+├── data/
+│   └── db.py            # Database configuration
+├── scripts/
+│   ├── generate_erd.py  # ERD diagram generator
+│   └── data_import.py   # CSV data importer
+├── tests/               # Test suite
+├── .env                 # Environment variables
+├── alembic.ini         # Alembic configuration
+└── requirements.txt    # Python dependencies
+```
+
+## Creating Models
+
+Add your models in the `models/` directory:
+
+```python
+# models/user.py
+from sqlalchemy import Column, String, Boolean
+from .base import Base
+
+class User(Base):
+    __tablename__ = "user"
+
+    email = Column(String(255), nullable=False, unique=True)
+    username = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+```
+
+Then add it to `models/__init__.py`:
+
+```python
+from .base import Base
+from .user import User
+
+__all__ = ["Base", "User"]
+```
+
+## Running Tests
+
+```bash
+pytest -xvs
+```
+{% if include_erd_generator %}
+
+## Generate ERD
+
+```bash
+python scripts/generate_erd.py
+```
+
+Output will be in `docs/erds/`.
+{% endif %}
+
+## Environment Variables
+
+See `.env` for configuration options:
+
+- `DATABASE_URL` - Full database connection string
+- `SECRET_KEY` - Application secret (change in production!)
+- `ENVIRONMENT` - development, testing, or production
+- `DEBUG` - Enable debug mode
+
+---
+
+Built with [create-sqlalchemy-app](https://github.com/ShawnaRStaff/create-sqlalchemy-app)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "create-sqlalchemy-app"
-version = "1.0.0"
+version = "1.0.1"
 description = "Create SQLAlchemy applications with a single command - like Create React App for Python backends"
 readme = "README.md"
 license = "MIT"

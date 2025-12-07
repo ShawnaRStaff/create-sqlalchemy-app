@@ -8,7 +8,7 @@ Usage:
 
 import os
 
-from flask import Flask
+from flask import Flask, render_template
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -46,10 +46,7 @@ def create_app(config_name: str = None) -> Flask:
 
     @app.route("/")
     def index():
-        """Root endpoint."""
-        return {
-            "message": "Welcome to {{ project_name }}",
-            "health": "/health",
-        }
+        """Root endpoint - Welcome page."""
+        return render_template("index.html", project_name="{{ project_name }}")
 
     return app

@@ -1,73 +1,9 @@
-"""
-{{ project_name }} - FastAPI Application
-
-Run with:
-    uvicorn main:app --reload
-"""
-
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-
-from api.routes import health
-from data.db import engine
-from models import Base
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Application lifespan handler.
-
-    Runs on startup and shutdown.
-    """
-    # Startup: Create tables if they don't exist
-    # Note: In production, use Alembic migrations instead
-    # Base.metadata.create_all(bind=engine)
-
-    yield
-
-    # Shutdown: Cleanup resources
-    engine.dispose()
-
-
-# Create FastAPI application
-app = FastAPI(
-    title="{{ project_name }}",
-    description="API for {{ project_name }}",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(health.router, tags=["Health"])
-
-# Add your routers here:
-# from api.routes import users
-# app.include_router(users.router, prefix="/api/v1", tags=["Users"])
-
-
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    """Root endpoint - Welcome page."""
-    return """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ project_name }}</title>
+    <title>{% raw %}{{ project_name }}{% endraw %}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -86,7 +22,7 @@ async def root():
         h1 {
             font-size: 3rem;
             margin-bottom: 0.5rem;
-            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            background: linear-gradient(90deg, #ff6b6b, #feca57);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -124,15 +60,15 @@ async def root():
             flex-wrap: wrap;
         }
         a {
-            color: #00d9ff;
+            color: #feca57;
             text-decoration: none;
             padding: 0.75rem 1.5rem;
-            border: 1px solid #00d9ff;
+            border: 1px solid #feca57;
             border-radius: 8px;
             transition: all 0.3s;
         }
         a:hover {
-            background: #00d9ff;
+            background: #feca57;
             color: #1a1a2e;
         }
         .footer {
@@ -144,21 +80,13 @@ async def root():
 </head>
 <body>
     <div class="container">
-        <h1>{{ project_name }}</h1>
-        <p class="subtitle">Your FastAPI + SQLAlchemy application is running</p>
+        <h1>{% raw %}{{ project_name }}{% endraw %}</h1>
+        <p class="subtitle">Your Flask + SQLAlchemy application is running</p>
         <div class="status">Server Online</div>
         <div class="links">
-            <a href="/docs">API Docs</a>
-            <a href="/redoc">ReDoc</a>
             <a href="/health">Health Check</a>
         </div>
         <p class="footer">Built with create-sqlalchemy-app</p>
     </div>
 </body>
 </html>
-    """
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

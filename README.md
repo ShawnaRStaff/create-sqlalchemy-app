@@ -44,6 +44,12 @@ After installation, both `create-sqlalchemy-app` and `csa` commands are availabl
 
 ## Quick Start
 
+### Installation
+
+```bash
+pip install create-sqlalchemy-app
+```
+
 ### Create a New Project
 
 Interactive mode (recommended):
@@ -253,24 +259,12 @@ Run package tests:
 pytest tests/
 ```
 
-## Starter Kits
-
-Skip the boilerplate with pre-built models:
-
-```bash
-csa my-project --starter auth        # User model with authentication
-csa my-project --starter blog        # User, Post, Comment, Tag models
-csa my-project --starter ecommerce   # User, Product, Order, Category models
-```
-
-Each starter includes models with relationships and matching tests.
-
 ## Roadmap
 
-- [x] Starter kits (auth, blog, ecommerce)
+- [ ] Starter kits (auth, blog, ecommerce)
 - [ ] API schema generation (Pydantic models)
-- [ ] Authentication boilerplate (JWT/sessions)
-- [ ] Deployment configurations (Docker, cloud)
+- [ ] Authentication boilerplate
+- [ ] Deployment configurations
 
 ## License
 

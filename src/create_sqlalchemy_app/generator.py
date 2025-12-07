@@ -179,6 +179,7 @@ class ProjectGenerator:
     def _generate_files(self):
         """Generate all project files from templates."""
         # Core files
+        self._write_file("README.md", self._render_template("core/README.md.jinja2"))
         self._write_file(".env", self._render_template("core/env.jinja2"))
         self._write_file(".gitignore", self._render_template("core/gitignore.jinja2"))
         self._write_file("__init__.py", "")
@@ -258,6 +259,10 @@ class ProjectGenerator:
         self._write_file(
             "app/routes/health.py",
             self._render_template("frameworks/flask/health.py.jinja2")
+        )
+        self._write_file(
+            "app/templates/index.html",
+            self._render_template("frameworks/flask/index.html.jinja2")
         )
         self._write_file("run.py", self._render_template("frameworks/flask/run.py.jinja2"))
 
