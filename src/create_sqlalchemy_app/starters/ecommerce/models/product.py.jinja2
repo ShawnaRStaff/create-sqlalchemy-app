@@ -1,0 +1,81 @@
+"""
+Product model for e-commerce items.
+"""
+
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+
+
+class Product(Base):
+    """Product model for e-commerce."""
+
+    __tablename__ = "product"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id = Column(UUID(as_uuid=True), ForeignKey("category.id", ondelete="SET NULL"), nullable=True, index=True)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    category_id = Column(String(36), ForeignKey("category.id", ondelete="SET NULL"), nullable=True, index=True)
+{% endif %}
+
+    name = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+
+    price = Column(Numeric(10, 2), nullable=False)
+    compare_at_price = Column(Numeric(10, 2), nullable=True)  # Original price for sales
+    cost = Column(Numeric(10, 2), nullable=True)  # Cost to business
+
+    sku = Column(String(100), nullable=True, unique=True, index=True)
+    barcode = Column(String(100), nullable=True)
+
+    quantity = Column(Integer, default=0, nullable=False)
+    low_stock_threshold = Column(Integer, default=10, nullable=False)
+
+    weight = Column(Numeric(8, 2), nullable=True)  # in grams
+
+    image_url = Column(String(500), nullable=True)
+
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_featured = Column(Boolean, default=False, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    category = relationship("Category", back_populates="products")
+    order_items = relationship("OrderItem", back_populates="product")
+
+    def __repr__(self) -> str:
+        return f"<Product(id={{ '{' }}self.id{{ '}' }}, name='{{ '{' }}self.name[:30]{{ '}' }}...')>"
+
+    @property
+    def is_on_sale(self) -> bool:
+        """Check if product is on sale."""
+        return self.compare_at_price is not None and self.compare_at_price > self.price
+
+    @property
+    def is_in_stock(self) -> bool:
+        """Check if product is in stock."""
+        return self.quantity > 0
+
+    @property
+    def is_low_stock(self) -> bool:
+        """Check if product is low on stock."""
+        return self.quantity <= self.low_stock_threshold

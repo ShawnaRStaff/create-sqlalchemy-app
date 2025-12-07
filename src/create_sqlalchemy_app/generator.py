@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import Environment, ChoiceLoader, PackageLoader, select_autoescape
 from rich.progress import Progress, TaskID
 
 from .config import ProjectConfig, Framework, Database
+from .starters import get_starter
 
 
 class ProjectGenerator:
@@ -23,9 +24,14 @@ class ProjectGenerator:
         self.progress = progress
         self.is_windows = platform.system() == "Windows"
 
-        # Setup Jinja2 environment
+        # Setup Jinja2 environment with multiple loaders
+        # - templates/ for core templates
+        # - root of package for starters/ subdirectory
         self.env = Environment(
-            loader=PackageLoader("create_sqlalchemy_app", "templates"),
+            loader=ChoiceLoader([
+                PackageLoader("create_sqlalchemy_app", "templates"),
+                PackageLoader("create_sqlalchemy_app", ""),
+            ]),
             autoescape=select_autoescape(),
             keep_trailing_newline=True,
         )
@@ -90,6 +96,11 @@ class ProjectGenerator:
         # Step 4: Generate project files
         self._update_progress("Generating project files...")
         self._generate_files()
+
+        # Step 4b: Apply starter kit (if specified)
+        if self.config.starter:
+            self._update_progress(f"Applying {self.config.starter} starter kit...")
+            self._apply_starter_kit()
 
         # Step 5: Initialize Alembic
         self._update_progress("Initializing Alembic...")
@@ -253,6 +264,23 @@ class ProjectGenerator:
     def _generate_minimal_files(self):
         """Generate minimal project files (no web framework)."""
         self._write_file("main.py", self._render_template("frameworks/minimal/main.py.jinja2"))
+
+    def _apply_starter_kit(self):
+        """Apply a starter kit (pre-built models and tests)."""
+        starter = get_starter(self.config.starter)
+
+        # Render and write model files
+        for template_path, output_path in starter.model_templates.items():
+            self._write_file(output_path, self._render_template(template_path))
+
+        # Render and write the models __init__.py
+        init_template, init_output = starter.init_template
+        self._write_file(init_output, self._render_template(init_template))
+
+        # Render and write test file (if tests included)
+        if self.config.include_tests:
+            test_template, test_output = starter.test_template
+            self._write_file(test_output, self._render_template(test_template))
 
     def _initialize_alembic(self):
         """Initialize Alembic for database migrations."""

@@ -19,6 +19,7 @@ from rich import print as rprint
 
 from .config import ProjectConfig, Framework, Database
 from .generator import ProjectGenerator
+from .starters import list_starters, get_starter_descriptions
 
 console = Console()
 
@@ -202,6 +203,34 @@ def prompt_database_config(database: Database) -> dict:
     return config
 
 
+def prompt_starter() -> str | None:
+    """Prompt user to select a starter kit."""
+    console.print()
+    console.print("[bold]Starter kits (pre-built models):[/bold]")
+    console.print()
+
+    descriptions = get_starter_descriptions()
+    options = [
+        ("0", None, "None", "Start with just a base model"),
+        ("1", "auth", "Auth", descriptions.get("auth", "")),
+        ("2", "blog", "Blog", descriptions.get("blog", "")),
+        ("3", "ecommerce", "E-commerce", descriptions.get("ecommerce", "")),
+    ]
+
+    for num, _, name, desc in options:
+        console.print(f"  [cyan]{num}[/cyan]) [bold]{name}[/bold] - {desc}")
+
+    console.print()
+    choice = Prompt.ask(
+        "Enter your choice",
+        choices=["0", "1", "2", "3"],
+        default="0"
+    )
+
+    starter_map = {"0": None, "1": "auth", "2": "blog", "3": "ecommerce"}
+    return starter_map[choice]
+
+
 def prompt_features(database: Database) -> dict:
     """Prompt for optional features."""
     config = {}
@@ -319,6 +348,11 @@ def prompt_features(database: Database) -> dict:
     help="Skip CSV import module"
 )
 @click.option(
+    "--starter", "-s",
+    type=click.Choice(["auth", "blog", "ecommerce"]),
+    help="Include a starter kit with pre-built models"
+)
+@click.option(
     "--yes", "-y",
     is_flag=True,
     help="Skip interactive prompts (requires --framework and --database)"
@@ -339,6 +373,7 @@ def main(
     no_git: bool,
     no_erd: bool,
     no_csv_import: bool,
+    starter: str,
     yes: bool
 ):
     """
@@ -388,6 +423,7 @@ def main(
         # Non-interactive mode
         selected_framework = Framework(framework)
         selected_database = Database(database)
+        selected_starter = starter  # Use CLI arg directly
 
         db_config = {
             "db_name": db_name or project_name.replace("-", "_"),
@@ -410,6 +446,7 @@ def main(
         selected_framework = prompt_framework()
         selected_database = prompt_database()
         db_config = prompt_database_config(selected_database)
+        selected_starter = starter if starter else prompt_starter()
         feature_config = prompt_features(selected_database)
 
     # Create project configuration
@@ -418,6 +455,7 @@ def main(
         path=project_path,
         framework=selected_framework,
         database=selected_database,
+        starter=selected_starter,
         **db_config,
         **feature_config
     )

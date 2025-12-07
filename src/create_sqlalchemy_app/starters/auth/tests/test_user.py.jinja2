@@ -1,0 +1,175 @@
+"""
+Tests for the User model.
+"""
+
+import pytest
+from datetime import datetime
+
+
+class TestUserModel:
+    """Test User model CRUD operations."""
+
+    def test_create_user(self, db):
+        """Test creating a new user."""
+        from models.user import User
+
+        user = User(
+            email="test@example.com",
+            username="testuser",
+            password_hash="hashed_password_here",
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.id is not None
+        assert user.email == "test@example.com"
+        assert user.username == "testuser"
+        assert user.is_active is True
+        assert user.is_verified is False
+        assert user.created_at is not None
+
+    def test_user_unique_email(self, db):
+        """Test that email must be unique."""
+        from models.user import User
+        from sqlalchemy.exc import IntegrityError
+
+        user1 = User(
+            email="duplicate@example.com",
+            username="user1",
+            password_hash="hash1",
+        )
+        db.add(user1)
+        db.commit()
+
+        user2 = User(
+            email="duplicate@example.com",  # Same email
+            username="user2",
+            password_hash="hash2",
+        )
+        db.add(user2)
+
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+    def test_user_unique_username(self, db):
+        """Test that username must be unique."""
+        from models.user import User
+        from sqlalchemy.exc import IntegrityError
+
+        user1 = User(
+            email="user1@example.com",
+            username="sameusername",
+            password_hash="hash1",
+        )
+        db.add(user1)
+        db.commit()
+
+        user2 = User(
+            email="user2@example.com",
+            username="sameusername",  # Same username
+            password_hash="hash2",
+        )
+        db.add(user2)
+
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+    def test_user_full_name(self, db):
+        """Test the full_name property."""
+        from models.user import User
+
+        # Without first/last name
+        user1 = User(
+            email="noname@example.com",
+            username="noname",
+            password_hash="hash",
+        )
+        assert user1.full_name == "noname"
+
+        # With first/last name
+        user2 = User(
+            email="fullname@example.com",
+            username="fullname",
+            password_hash="hash",
+            first_name="John",
+            last_name="Doe",
+        )
+        assert user2.full_name == "John Doe"
+
+    def test_update_user(self, db):
+        """Test updating a user."""
+        from models.user import User
+
+        user = User(
+            email="update@example.com",
+            username="updateuser",
+            password_hash="hash",
+        )
+        db.add(user)
+        db.commit()
+
+        original_updated_at = user.updated_at
+
+        # Update user
+        user.first_name = "Updated"
+        db.commit()
+        db.refresh(user)
+
+        assert user.first_name == "Updated"
+        # Note: updated_at may or may not change depending on DB
+
+    def test_delete_user(self, db):
+        """Test deleting a user."""
+        from models.user import User
+
+        user = User(
+            email="delete@example.com",
+            username="deleteuser",
+            password_hash="hash",
+        )
+        db.add(user)
+        db.commit()
+
+        user_id = user.id
+
+        db.delete(user)
+        db.commit()
+
+        # Verify deleted
+        found = db.query(User).filter(User.id == user_id).first()
+        assert found is None
+
+    def test_query_by_email(self, db):
+        """Test querying user by email."""
+        from models.user import User
+
+        user = User(
+            email="query@example.com",
+            username="queryuser",
+            password_hash="hash",
+        )
+        db.add(user)
+        db.commit()
+
+        found = db.query(User).filter(User.email == "query@example.com").first()
+        assert found is not None
+        assert found.username == "queryuser"
+
+    def test_user_status_flags(self, db):
+        """Test user status flags."""
+        from models.user import User
+
+        user = User(
+            email="status@example.com",
+            username="statususer",
+            password_hash="hash",
+            is_active=False,
+            is_verified=True,
+            is_superuser=True,
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.is_active is False
+        assert user.is_verified is True
+        assert user.is_superuser is True

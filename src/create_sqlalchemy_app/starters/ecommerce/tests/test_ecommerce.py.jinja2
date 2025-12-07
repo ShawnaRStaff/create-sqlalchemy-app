@@ -1,0 +1,315 @@
+"""
+Tests for e-commerce models.
+"""
+
+import pytest
+from decimal import Decimal
+
+
+class TestUserModel:
+    """Test User model."""
+
+    def test_create_user(self, db):
+        from models.user import User
+
+        user = User(
+            email="customer@shop.com",
+            username="customer1",
+            password_hash="hash",
+            first_name="John",
+            last_name="Doe",
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.id is not None
+        assert user.username == "customer1"
+        assert user.full_name == "John Doe"
+
+    def test_user_address(self, db):
+        from models.user import User
+
+        user = User(
+            email="addr@shop.com",
+            username="addr",
+            password_hash="hash",
+            address_line1="123 Main St",
+            city="Springfield",
+            state="IL",
+            postal_code="62701",
+            country="USA",
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.city == "Springfield"
+        assert user.postal_code == "62701"
+
+
+class TestCategoryModel:
+    """Test Category model."""
+
+    def test_create_category(self, db):
+        from models.category import Category
+
+        category = Category(
+            name="Electronics",
+            slug="electronics",
+            description="Electronic devices and accessories",
+        )
+        db.add(category)
+        db.commit()
+
+        assert category.id is not None
+        assert category.name == "Electronics"
+
+    def test_nested_categories(self, db):
+        from models.category import Category
+
+        parent = Category(name="Clothing", slug="clothing")
+        db.add(parent)
+        db.commit()
+
+        child = Category(
+            name="Men's Clothing",
+            slug="mens-clothing",
+            parent_id=parent.id,
+        )
+        db.add(child)
+        db.commit()
+
+        assert child.parent.id == parent.id
+        assert len(parent.children) == 1
+
+
+class TestProductModel:
+    """Test Product model."""
+
+    def test_create_product(self, db):
+        from models.category import Category
+        from models.product import Product
+
+        category = Category(name="Books", slug="books")
+        db.add(category)
+        db.commit()
+
+        product = Product(
+            category_id=category.id,
+            name="Python Programming",
+            slug="python-programming",
+            description="Learn Python programming",
+            price=Decimal("29.99"),
+            sku="BOOK-001",
+            quantity=100,
+        )
+        db.add(product)
+        db.commit()
+
+        assert product.id is not None
+        assert product.price == Decimal("29.99")
+        assert product.is_in_stock is True
+
+    def test_product_on_sale(self, db):
+        from models.product import Product
+
+        product = Product(
+            name="Sale Item",
+            slug="sale-item",
+            price=Decimal("19.99"),
+            compare_at_price=Decimal("29.99"),
+            quantity=50,
+        )
+        db.add(product)
+        db.commit()
+
+        assert product.is_on_sale is True
+
+    def test_product_low_stock(self, db):
+        from models.product import Product
+
+        product = Product(
+            name="Low Stock Item",
+            slug="low-stock-item",
+            price=Decimal("9.99"),
+            quantity=5,
+            low_stock_threshold=10,
+        )
+        db.add(product)
+        db.commit()
+
+        assert product.is_low_stock is True
+        assert product.is_in_stock is True
+
+    def test_product_out_of_stock(self, db):
+        from models.product import Product
+
+        product = Product(
+            name="Out of Stock",
+            slug="out-of-stock",
+            price=Decimal("49.99"),
+            quantity=0,
+        )
+        db.add(product)
+        db.commit()
+
+        assert product.is_in_stock is False
+
+
+class TestOrderModel:
+    """Test Order model."""
+
+    def test_create_order(self, db):
+        from models.user import User
+        from models.order import Order, OrderStatus
+
+        customer = User(
+            email="order@shop.com",
+            username="orderer",
+            password_hash="hash",
+        )
+        db.add(customer)
+        db.commit()
+
+        order = Order(
+            customer_id=customer.id,
+            order_number="ORD-001",
+            subtotal=Decimal("100.00"),
+            tax=Decimal("8.00"),
+            shipping_cost=Decimal("5.00"),
+            total=Decimal("113.00"),
+        )
+        db.add(order)
+        db.commit()
+
+        assert order.id is not None
+        assert order.status == OrderStatus.PENDING
+        assert order.total == Decimal("113.00")
+
+    def test_order_with_items(self, db):
+        from models.user import User
+        from models.product import Product
+        from models.order import Order, OrderItem
+
+        customer = User(
+            email="items@shop.com",
+            username="itembuyer",
+            password_hash="hash",
+        )
+        db.add(customer)
+        db.commit()
+
+        product = Product(
+            name="Widget",
+            slug="widget",
+            price=Decimal("25.00"),
+            quantity=100,
+        )
+        db.add(product)
+        db.commit()
+
+        order = Order(
+            customer_id=customer.id,
+            order_number="ORD-002",
+            subtotal=Decimal("50.00"),
+            total=Decimal("50.00"),
+        )
+        db.add(order)
+        db.commit()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            product_sku=product.sku,
+            quantity=2,
+            unit_price=product.price,
+        )
+        db.add(item)
+        db.commit()
+
+        assert len(order.items) == 1
+        assert item.line_total == Decimal("50.00")
+
+    def test_order_shipping(self, db):
+        from models.user import User
+        from models.order import Order, OrderStatus
+
+        customer = User(
+            email="ship@shop.com",
+            username="shipper",
+            password_hash="hash",
+        )
+        db.add(customer)
+        db.commit()
+
+        order = Order(
+            customer_id=customer.id,
+            order_number="ORD-003",
+            subtotal=Decimal("75.00"),
+            total=Decimal("75.00"),
+            status=OrderStatus.PROCESSING,
+        )
+        db.add(order)
+        db.commit()
+
+        assert order.shipped_at is None
+
+        order.ship()
+        db.commit()
+
+        assert order.status == OrderStatus.SHIPPED
+        assert order.shipped_at is not None
+
+    def test_order_delivery(self, db):
+        from models.user import User
+        from models.order import Order, OrderStatus
+
+        customer = User(
+            email="deliver@shop.com",
+            username="deliverer",
+            password_hash="hash",
+        )
+        db.add(customer)
+        db.commit()
+
+        order = Order(
+            customer_id=customer.id,
+            order_number="ORD-004",
+            subtotal=Decimal("50.00"),
+            total=Decimal("50.00"),
+            status=OrderStatus.SHIPPED,
+        )
+        db.add(order)
+        db.commit()
+
+        order.deliver()
+        db.commit()
+
+        assert order.status == OrderStatus.DELIVERED
+        assert order.delivered_at is not None
+
+    def test_order_cancellation(self, db):
+        from models.user import User
+        from models.order import Order, OrderStatus
+
+        customer = User(
+            email="cancel@shop.com",
+            username="canceller",
+            password_hash="hash",
+        )
+        db.add(customer)
+        db.commit()
+
+        order = Order(
+            customer_id=customer.id,
+            order_number="ORD-005",
+            subtotal=Decimal("100.00"),
+            total=Decimal("100.00"),
+        )
+        db.add(order)
+        db.commit()
+
+        order.cancel()
+        db.commit()
+
+        assert order.status == OrderStatus.CANCELLED

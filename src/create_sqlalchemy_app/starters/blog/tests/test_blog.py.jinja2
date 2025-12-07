@@ -1,0 +1,196 @@
+"""
+Tests for blog models.
+"""
+
+import pytest
+
+
+class TestUserModel:
+    """Test User model."""
+
+    def test_create_user(self, db):
+        from models.user import User
+
+        user = User(
+            email="author@blog.com",
+            username="author",
+            password_hash="hash",
+            display_name="Blog Author",
+        )
+        db.add(user)
+        db.commit()
+
+        assert user.id is not None
+        assert user.username == "author"
+
+
+class TestPostModel:
+    """Test Post model."""
+
+    def test_create_post(self, db):
+        from models.user import User
+        from models.post import Post, PostStatus
+
+        # Create author
+        author = User(
+            email="author@blog.com",
+            username="author",
+            password_hash="hash",
+        )
+        db.add(author)
+        db.commit()
+
+        # Create post
+        post = Post(
+            author_id=author.id,
+            title="My First Post",
+            slug="my-first-post",
+            content="This is my first blog post!",
+        )
+        db.add(post)
+        db.commit()
+
+        assert post.id is not None
+        assert post.status == PostStatus.DRAFT
+        assert post.author.username == "author"
+
+    def test_publish_post(self, db):
+        from models.user import User
+        from models.post import Post, PostStatus
+
+        author = User(email="pub@blog.com", username="pub", password_hash="hash")
+        db.add(author)
+        db.commit()
+
+        post = Post(
+            author_id=author.id,
+            title="Publish Test",
+            slug="publish-test",
+            content="Content here",
+        )
+        db.add(post)
+        db.commit()
+
+        assert post.status == PostStatus.DRAFT
+        assert post.published_at is None
+
+        post.publish()
+        db.commit()
+
+        assert post.status == PostStatus.PUBLISHED
+        assert post.published_at is not None
+
+
+class TestCommentModel:
+    """Test Comment model."""
+
+    def test_create_comment(self, db):
+        from models.user import User
+        from models.post import Post
+        from models.comment import Comment
+
+        author = User(email="comm@blog.com", username="comm", password_hash="hash")
+        db.add(author)
+        db.commit()
+
+        post = Post(
+            author_id=author.id,
+            title="Comment Test",
+            slug="comment-test",
+            content="Post content",
+        )
+        db.add(post)
+        db.commit()
+
+        comment = Comment(
+            post_id=post.id,
+            author_id=author.id,
+            content="Great post!",
+        )
+        db.add(comment)
+        db.commit()
+
+        assert comment.id is not None
+        assert comment.post.title == "Comment Test"
+        assert len(post.comments) == 1
+
+    def test_nested_comments(self, db):
+        from models.user import User
+        from models.post import Post
+        from models.comment import Comment
+
+        author = User(email="nest@blog.com", username="nest", password_hash="hash")
+        db.add(author)
+        db.commit()
+
+        post = Post(
+            author_id=author.id,
+            title="Nested Test",
+            slug="nested-test",
+            content="Content",
+        )
+        db.add(post)
+        db.commit()
+
+        parent_comment = Comment(
+            post_id=post.id,
+            author_id=author.id,
+            content="Parent comment",
+        )
+        db.add(parent_comment)
+        db.commit()
+
+        reply = Comment(
+            post_id=post.id,
+            author_id=author.id,
+            content="Reply to parent",
+            parent_id=parent_comment.id,
+        )
+        db.add(reply)
+        db.commit()
+
+        assert reply.parent.id == parent_comment.id
+        assert len(parent_comment.replies) == 1
+
+
+class TestTagModel:
+    """Test Tag model."""
+
+    def test_create_tag(self, db):
+        from models.tag import Tag
+
+        tag = Tag(name="Python", slug="python", description="Python programming")
+        db.add(tag)
+        db.commit()
+
+        assert tag.id is not None
+        assert tag.name == "Python"
+
+    def test_post_tags(self, db):
+        from models.user import User
+        from models.post import Post
+        from models.tag import Tag
+
+        author = User(email="tag@blog.com", username="tag", password_hash="hash")
+        db.add(author)
+        db.commit()
+
+        tag1 = Tag(name="Python", slug="python")
+        tag2 = Tag(name="SQLAlchemy", slug="sqlalchemy")
+        db.add_all([tag1, tag2])
+        db.commit()
+
+        post = Post(
+            author_id=author.id,
+            title="Tagged Post",
+            slug="tagged-post",
+            content="A post with tags",
+        )
+        post.tags.append(tag1)
+        post.tags.append(tag2)
+        db.add(post)
+        db.commit()
+
+        assert len(post.tags) == 2
+        assert tag1 in post.tags
+        assert post in tag1.posts

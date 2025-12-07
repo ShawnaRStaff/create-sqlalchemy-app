@@ -1,0 +1,137 @@
+"""
+Order and OrderItem models for e-commerce.
+"""
+
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum as PyEnum
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+
+
+class OrderStatus(PyEnum):
+    """Order status enum."""
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+    REFUNDED = "refunded"
+
+
+class Order(Base):
+    """Order model."""
+
+    __tablename__ = "order"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    customer_id = Column(String(36), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+{% endif %}
+
+    order_number = Column(String(50), nullable=False, unique=True, index=True)
+    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
+
+    # Pricing
+    subtotal = Column(Numeric(10, 2), nullable=False)
+    tax = Column(Numeric(10, 2), default=0, nullable=False)
+    shipping_cost = Column(Numeric(10, 2), default=0, nullable=False)
+    discount = Column(Numeric(10, 2), default=0, nullable=False)
+    total = Column(Numeric(10, 2), nullable=False)
+
+    # Shipping address (snapshot at time of order)
+    shipping_address_line1 = Column(String(255), nullable=True)
+    shipping_address_line2 = Column(String(255), nullable=True)
+    shipping_city = Column(String(100), nullable=True)
+    shipping_state = Column(String(100), nullable=True)
+    shipping_postal_code = Column(String(20), nullable=True)
+    shipping_country = Column(String(100), nullable=True)
+
+    notes = Column(Text, nullable=True)
+
+    shipped_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    customer = relationship("User", back_populates="orders")
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<Order(id={{ '{' }}self.id{{ '}' }}, order_number='{{ '{' }}self.order_number{{ '}' }}')>"
+
+    def calculate_totals(self) -> None:
+        """Recalculate order totals from items."""
+        self.subtotal = sum(item.line_total for item in self.items)
+        self.total = self.subtotal + self.tax + self.shipping_cost - self.discount
+
+    def ship(self) -> None:
+        """Mark order as shipped."""
+        self.status = OrderStatus.SHIPPED
+        self.shipped_at = datetime.utcnow()
+
+    def deliver(self) -> None:
+        """Mark order as delivered."""
+        self.status = OrderStatus.DELIVERED
+        self.delivered_at = datetime.utcnow()
+
+    def cancel(self) -> None:
+        """Cancel the order."""
+        self.status = OrderStatus.CANCELLED
+
+
+class OrderItem(Base):
+    """Order line item."""
+
+    __tablename__ = "order_item"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("order.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("product.id", ondelete="SET NULL"), nullable=True, index=True)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    order_id = Column(String(36), ForeignKey("order.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(String(36), ForeignKey("product.id", ondelete="SET NULL"), nullable=True, index=True)
+{% endif %}
+
+    # Snapshot of product at time of order
+    product_name = Column(String(255), nullable=False)
+    product_sku = Column(String(100), nullable=True)
+
+    quantity = Column(Integer, nullable=False)
+    unit_price = Column(Numeric(10, 2), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    order = relationship("Order", back_populates="items")
+    product = relationship("Product", back_populates="order_items")
+
+    def __repr__(self) -> str:
+        return f"<OrderItem(id={{ '{' }}self.id{{ '}' }}, product='{{ '{' }}self.product_name{{ '}' }}', qty={{ '{' }}self.quantity{{ '}' }})>"
+
+    @property
+    def line_total(self) -> Decimal:
+        """Calculate line item total."""
+        return self.unit_price * self.quantity

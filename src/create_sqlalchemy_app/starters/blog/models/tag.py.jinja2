@@ -1,0 +1,41 @@
+"""
+Tag model for categorizing blog posts.
+"""
+
+from sqlalchemy import Column, String
+from sqlalchemy.orm import relationship
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+from .post import post_tags  # Import the association table
+
+
+class Tag(Base):
+    """Tag for categorizing posts."""
+
+    __tablename__ = "tag"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+{% endif %}
+
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    description = Column(String(255), nullable=True)
+
+    # Relationships
+    posts = relationship("Post", secondary=post_tags, back_populates="tags")
+
+    def __repr__(self) -> str:
+        return f"<Tag(id={{ '{' }}self.id{{ '}' }}, name='{{ '{' }}self.name{{ '}' }}')>"

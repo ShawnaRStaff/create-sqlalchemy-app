@@ -1,0 +1,86 @@
+"""
+Post model for blog posts.
+"""
+
+from datetime import datetime
+from enum import Enum as PyEnum
+
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, Table
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+
+
+class PostStatus(PyEnum):
+    """Post status enum."""
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+# Association table for Post <-> Tag many-to-many
+post_tags = Table(
+    "post_tags",
+    Base.metadata,
+{% if is_postgresql %}
+    Column("post_id", UUID(as_uuid=True), ForeignKey("post.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", UUID(as_uuid=True), ForeignKey("tag.id", ondelete="CASCADE"), primary_key=True),
+{% else %}
+    Column("post_id", String(36), ForeignKey("post.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", String(36), ForeignKey("tag.id", ondelete="CASCADE"), primary_key=True),
+{% endif %}
+)
+
+
+class Post(Base):
+    """Blog post model."""
+
+    __tablename__ = "post"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    author_id = Column(String(36), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+{% endif %}
+
+    title = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    excerpt = Column(String(500), nullable=True)
+    content = Column(Text, nullable=False)
+
+    status = Column(Enum(PostStatus), default=PostStatus.DRAFT, nullable=False)
+    is_featured = Column(Boolean, default=False, nullable=False)
+
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    author = relationship("User", back_populates="posts")
+    comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary=post_tags, back_populates="posts")
+
+    def __repr__(self) -> str:
+        return f"<Post(id={{ '{' }}self.id{{ '}' }}, title='{{ '{' }}self.title[:30]{{ '}' }}...')>"
+
+    def publish(self) -> None:
+        """Publish the post."""
+        self.status = PostStatus.PUBLISHED
+        self.published_at = datetime.utcnow()
+
+    def archive(self) -> None:
+        """Archive the post."""
+        self.status = PostStatus.ARCHIVED

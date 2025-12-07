@@ -1,0 +1,55 @@
+"""
+Comment model for blog post comments.
+"""
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+
+
+class Comment(Base):
+    """Comment on a blog post."""
+
+    __tablename__ = "comment"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("post.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("comment.id", ondelete="CASCADE"), nullable=True)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_id = Column(String(36), ForeignKey("post.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(String(36), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(String(36), ForeignKey("comment.id", ondelete="CASCADE"), nullable=True)
+{% endif %}
+
+    content = Column(Text, nullable=False)
+    is_approved = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    post = relationship("Post", back_populates="comments")
+    author = relationship("User", back_populates="comments")
+
+    # Self-referential for nested comments (replies)
+    parent = relationship("Comment", remote_side="Comment.id", backref="replies")
+
+    def __repr__(self) -> str:
+        return f"<Comment(id={{ '{' }}self.id{{ '}' }}, post_id={{ '{' }}self.post_id{{ '}' }}, author_id={{ '{' }}self.author_id{{ '}' }})>"

@@ -1,0 +1,102 @@
+"""
+User model with authentication fields.
+
+This model provides the foundation for user authentication:
+- Email/username based login
+- Password hashing (use passlib or bcrypt)
+- Account status tracking
+- Timestamps for auditing
+"""
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import Boolean, Column, DateTime, String, Text
+from sqlalchemy.sql import func
+{% if is_postgresql %}
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+{% else %}
+from sqlalchemy import String as UUID_TYPE
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
+{% endif %}
+
+from .base import Base
+
+
+class User(Base):
+    """User model for authentication."""
+
+    __tablename__ = "user"
+
+{% if is_postgresql %}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+{% else %}
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+{% endif %}
+
+    # Authentication fields
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    username = Column(String(100), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+
+    # Profile fields (extend as needed)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
+
+    # Status flags
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+    last_login = Column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<User(id={{ '{' }}self.id{{ '}' }}, username='{{ '{' }}self.username{{ '}' }}', email='{{ '{' }}self.email{{ '}' }}')>"
+
+    @property
+    def full_name(self) -> str:
+        """Return the user's full name."""
+        if self.first_name and self.last_name:
+            return f"{{ '{' }}self.first_name{{ '}' }} {{ '{' }}self.last_name{{ '}' }}"
+        return self.username
+
+
+# =============================================================================
+# PASSWORD HASHING UTILITIES
+# =============================================================================
+#
+# Add password hashing using passlib or bcrypt:
+#
+# from passlib.context import CryptContext
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+#
+# def verify_password(plain_password: str, hashed_password: str) -> bool:
+#     return pwd_context.verify(plain_password, hashed_password)
+#
+# def hash_password(password: str) -> str:
+#     return pwd_context.hash(password)
+#
+# Then add methods to User class:
+#
+# def set_password(self, password: str) -> None:
+#     self.password_hash = hash_password(password)
+#
+# def check_password(self, password: str) -> bool:
+#     return verify_password(password, self.password_hash)
+# =============================================================================
