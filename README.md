@@ -4,8 +4,30 @@ Create SQLAlchemy applications with a single command - like Create React App, bu
 
 ```bash
 pip install create-sqlalchemy-app
-create-sqlalchemy-app my-project
+csa my-project
 ```
+
+## Installation
+
+### Windows
+```bash
+pip install create-sqlalchemy-app
+```
+
+### macOS (Homebrew Python)
+```bash
+brew install pipx
+pipx install create-sqlalchemy-app
+```
+
+### Linux
+```bash
+pip install create-sqlalchemy-app
+# or with pipx:
+pipx install create-sqlalchemy-app
+```
+
+After installation, both `create-sqlalchemy-app` and `csa` commands are available.
 
 ## Features
 
@@ -18,14 +40,9 @@ create-sqlalchemy-app my-project
 - **ERD Generator**: Auto-generate database diagrams (only when schema changes)
 - **CSV Import**: Framework for importing data from CSV files
 - **Beautiful CLI**: Interactive prompts with rich output
+- **Starter Kits**: Pre-built models for auth, blog, and e-commerce projects
 
 ## Quick Start
-
-### Installation
-
-```bash
-pip install create-sqlalchemy-app
-```
 
 ### Create a New Project
 
@@ -100,6 +117,7 @@ Options:
   --no-git                Skip Git initialization
   --no-erd                Skip ERD generator
   --no-csv-import         Skip CSV import module
+  -s, --starter           Starter kit: auth, blog, ecommerce
   -y, --yes               Skip prompts (requires --framework and --database)
   --version               Show version and exit
   --help                  Show this message and exit
@@ -235,12 +253,24 @@ Run package tests:
 pytest tests/
 ```
 
+## Starter Kits
+
+Skip the boilerplate with pre-built models:
+
+```bash
+csa my-project --starter auth        # User model with authentication
+csa my-project --starter blog        # User, Post, Comment, Tag models
+csa my-project --starter ecommerce   # User, Product, Order, Category models
+```
+
+Each starter includes models with relationships and matching tests.
+
 ## Roadmap
 
-- [ ] Starter kits (auth, blog, ecommerce)
+- [x] Starter kits (auth, blog, ecommerce)
 - [ ] API schema generation (Pydantic models)
-- [ ] Authentication boilerplate
-- [ ] Deployment configurations
+- [ ] Authentication boilerplate (JWT/sessions)
+- [ ] Deployment configurations (Docker, cloud)
 
 ## License
 
